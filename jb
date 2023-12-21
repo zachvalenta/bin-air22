@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-cd "$HOME/Documents/zvroot/notes" || exit
+cd "$HOME/Documents/zvroot/notes/domains" || exit
 echo -en "\n"
 
 # WORKING TREE
