@@ -1,0 +1,108 @@
+#!/usr/bin/env python3.11
+"""
+Generate a JSON index of corkboard tasks for fast Claude Code lookups.
+Run this after adding/renaming/removing tasks to keep the index fresh.
+
+Usage: corkboard-index [tasks-dir]
+"""
+
+import json
+import os
+import sys
+import tomllib
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def get_tasks_dir(argv: list[str]) -> Path:
+    if len(argv) > 1:
+        return Path(argv[1]).expanduser().resolve()
+
+    # Respect CORKBOARD_CONFIG env var (same as the app)
+    config_env = os.environ.get("CORKBOARD_CONFIG")
+    if config_env:
+        config_path = Path(config_env)
+        if config_path.exists():
+            with open(config_path, "rb") as f:
+                config = tomllib.load(f)
+            if "tasks_dir" in config:
+                return Path(config["tasks_dir"]).expanduser().resolve()
+
+    # Explicit override
+    env_dir = os.environ.get("CORKBOARD_TASKS_DIR")
+    if env_dir:
+        return Path(env_dir).expanduser().resolve()
+
+    # Hardcoded default
+    return Path.home() / "Documents" / "zv" / "personal" / "corkboard-tasks"
+
+
+def parse_task(file_path: Path, tasks_dir: Path) -> dict | None:
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    if not content.startswith("+++"):
+        return None
+
+    end = content.find("+++", 3)
+    if end == -1:
+        return None
+
+    frontmatter_str = content[3:end].strip()
+    body = content[end + 3:].strip()
+
+    try:
+        fm = tomllib.loads(frontmatter_str)
+    except Exception:
+        return None
+
+    rel_path = file_path.relative_to(tasks_dir)
+    # Infer project from parent dir if not in frontmatter
+    project = fm.get("project") or (
+        rel_path.parent.name if rel_path.parent.name != "." else ""
+    )
+
+    return {
+        "title": fm.get("title", file_path.stem),
+        "project": project,
+        "status": fm.get("status", "next"),
+        "prio": fm.get("prio", "high"),
+        "tags": fm.get("tags", []),
+        "path": str(rel_path),
+        "slug": file_path.stem,
+        "has_body": bool(body),
+    }
+
+
+def main():
+    tasks_dir = get_tasks_dir(sys.argv)
+
+    if not tasks_dir.exists():
+        print(f"error: tasks directory not found: {tasks_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    tasks = []
+    for md_file in sorted(tasks_dir.rglob("*.md")):
+        # Skip hidden directories (e.g. .git, .claude)
+        if any(part.startswith(".") for part in md_file.relative_to(tasks_dir).parts):
+            continue
+        task = parse_task(md_file, tasks_dir)
+        if task:
+            tasks.append(task)
+
+    index = {
+        "generated": datetime.now(timezone.utc).isoformat(),
+        "tasks_dir": str(tasks_dir),
+        "count": len(tasks),
+        "tasks": tasks,
+    }
+
+    index_path = tasks_dir / ".task-index.json"
+    index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+    print(f"indexed {len(tasks)} tasks → {index_path}")
+
+
+if __name__ == "__main__":
+    main()
