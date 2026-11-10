@@ -12,7 +12,9 @@ open_new_tab("https://www.youtube.com/playlist?list=WL")
 
 # SPORTS
 open_new_tab("https://espn.com/")
+open_new_tab("https://www.youtube.com/@NBA/videos")
 open_new_tab("https://plaintextsports.com/nba")
+open_new_tab("https://www.youtube.com/@NFL/videos")
 open_new_tab("https://plaintextsports.com/nfl/2026/schedule")
 
 # ZA
